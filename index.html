@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>nights-nx installer</title>
+  <link rel="icon" type="image/png" href="icons/favicon.png">
+  <meta name="description" content="Builds the Nintendo Switch package of NiGHTS into Dreams... from your own copy, in your browser.">
+  <style>
+    :root { color-scheme: dark; --bg: #0d0a1f; --panel: rgba(28, 22, 58, .86); --inset: rgba(8, 6, 20, .8); --text: #f3efff;
+      --muted: #c3b8e8; --accent: #ffd34d; --primary: #8a4fe0; --good: #5fd27f; --bad: #ff6b6b; --line: rgba(255, 255, 255, .12); }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; min-height: 100vh; color: var(--text); background: var(--bg);
+      font: 16px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+    body::before { content: ""; position: fixed; inset: 0; z-index: -1;
+      background: radial-gradient(60% 45% at 85% 10%, rgba(255, 211, 77, .18), transparent 70%),
+                  radial-gradient(70% 55% at 10% 20%, rgba(138, 79, 224, .32), transparent 70%), var(--bg); }
+    main { max-width: 860px; margin: 0 auto; padding: 28px 16px; display: flex; flex-direction: column; gap: 14px; }
+    header { text-align: center; }
+    header img { width: 160px; height: 160px; border-radius: 22px; box-shadow: 0 8px 28px rgba(0, 0, 0, .5); margin-bottom: 10px; }
+    h1 { font-size: 2.3rem; font-weight: 900; margin: 0 0 8px; }
+    h1 span { color: var(--accent); }
+    .lead { color: var(--muted); margin: 0 auto; max-width: 680px; }
+    .proto { display: inline-block; margin-top: 10px; padding: 2px 10px; border: 1px solid var(--accent); border-radius: 999px;
+      color: var(--accent); font-size: .85rem; font-weight: 700; }
+    section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px 20px; }
+    h2 { font-size: 1.1em; margin: 0 0 10px; }
+    button, label.button { display: inline-block; background: #3a2c6b; color: #fff; border: 1px solid #54429a; border-radius: 10px;
+      padding: .5em 1.05em; font: inherit; font-weight: 700; cursor: pointer; }
+    button.primary:not(:disabled) { background: var(--primary); border-color: #a77af0; }
+    button:disabled { background: #1f1840; border-color: #1f1840; color: #7d73a3; cursor: default; }
+    input[type=file] { position: absolute; opacity: 0; width: 1px; height: 1px; }
+    .chosen { color: var(--muted); margin-top: 8px; }
+    .detected { margin-top: 12px; background: var(--inset); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px;
+      word-break: break-word; }
+    .detected.good { border-color: var(--good); color: var(--good); }
+    .detected.bad { border-color: var(--bad); color: var(--bad); }
+    progress { width: 100%; height: 12px; margin-top: 12px; accent-color: var(--accent); }
+    #log { font: 13px/1.45 ui-monospace, monospace; color: var(--muted); white-space: pre-wrap; max-height: 12em; overflow: auto;
+      margin-top: 8px; }
+    .error { color: var(--bad); }
+    ol { margin: 0; padding-left: 20px; }
+    code { background: rgba(0, 0, 0, .45); border: 1px solid var(--line); padding: 1px 5px; border-radius: 4px; }
+    .note { color: var(--muted); font-size: .92rem; margin: 10px 0 0; }
+    footer { text-align: center; color: var(--muted); font-size: .85rem; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="icons/icon-192.png" alt="NiGHTS into Dreams...">
+    <h1>nights-nx <span>installer</span></h1>
+    <p class="lead">Builds the <strong>Nintendo Switch</strong> package of <strong>NiGHTS into Dreams...</strong> (Xbox Live Arcade)
+      from your own copy. Everything runs in <strong>this browser</strong>: nothing is uploaded.</p>
+    <span class="proto">prototype</span>
+  </header>
+
+  <section>
+    <h2>1. Choose your game</h2>
+    <label class="button" for="packages">Choose the packages</label>
+    <label class="button" for="folder">Choose an extracted folder</label>
+    <input id="packages" type="file" multiple>
+    <input id="folder" type="file" webkitdirectory>
+    <p class="note">Both of your Xbox 360 packages, chosen together: the game (title <code>58411268</code>, in
+      <code>Content/0000000000000000/58411268/000D0000/</code> of a console's storage) and its title update (in
+      <code>000B0000/</code>, or a <code>TU_...</code> file of the console's <code>Cache</code>). Or the folder the game
+      was extracted to, with the update's <code>default.xexp</code> beside <code>default.xex</code>.</p>
+    <div class="chosen" id="chosen">Nothing chosen yet.</div>
+    <div class="detected" id="detected" hidden></div>
+  </section>
+
+  <section>
+    <h2>2. Create the package</h2>
+    <button id="create" class="primary" disabled>Create nights-nx.zip</button>
+    <p class="note">The page makes the game's shaders from your files and compiles them for the Switch, which takes a few
+      minutes and a few GB of memory. The zip then downloads while it is written (about 2 GB).</p>
+    <progress id="bar" max="1" value="0" hidden></progress>
+    <div id="log" role="log" aria-live="polite"></div>
+  </section>
+
+  <section>
+    <h2>3. Copy it to the Switch</h2>
+    <ol>
+      <li>Extract <code>nights-nx.zip</code> to the root of the SD card: it makes <code>switch/nights-nx/</code>.</li>
+      <li>Start <code>nights-nx.nro</code> from the Homebrew Menu with a title takeover (hold R while starting a game).</li>
+      <li>Its settings (language, SMAA, controls) are in <code>switch/nights-nx/renut.toml</code>, written at the first
+        start.</li>
+    </ol>
+  </section>
+
+  <footer>
+    <p>Made from banjo-nx-installer, futari-nx-installer, sa2-nx-installer and nfsmw-nx-installer (GPL-3.0). See NOTICES.md.</p>
+  </footer>
+</main>
+<script type="module" src="./app.js"></script>
+</body>
+</html>

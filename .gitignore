@@ -1,0 +1,6 @@
+# Test outputs are game data (shader files, zips): never commit them.
+out/
+*.zip
+node_modules/
+__pycache__/
+wasm/src/*/build/

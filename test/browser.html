@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>banjo-nx installer: browser test</title>
+  <style>
+    body { background: #111; color: #ddd; font: 13px/1.45 ui-monospace, monospace; margin: 16px; }
+    .bad { color: #ff6b6b; } .good { color: #5fd27f; }
+    progress { width: 100%; }
+  </style>
+</head>
+<body>
+<!-- banjo-nx-installer: worker.js in the browser on the game folder the test server serves (python serve.py 8193 .
+     --test-files <game folder>), the page's own download sink replaced by this page reading the zip from the worker's
+     port (bytes counted and the zip's end records checked, nothing saved). ?game=0 leaves the game's files out. -->
+<progress id="bar" max="1" value="0"></progress>
+<div id="log"></div>
+<script type="module">
+const logBox = document.getElementById('log');
+const bar = document.getElementById('bar');
+const T0 = performance.now();
+const log = (text, cls = '') => {
+  const d = document.createElement('div');
+  d.textContent = `[${((performance.now() - T0) / 1000).toFixed(0)} s] ${text}`;
+  d.className = cls;
+  logBox.appendChild(d);
+  window.testLog = (window.testLog || []).concat(d.textContent);
+};
+window.testDone = false;
+const withGame = new URLSearchParams(location.search).get('game') !== '0';
+const list = await (await fetch('/_test_list')).json();
+const entries = list.filter((f) => withGame || f.path === 'default.xex' || f.path.startsWith('Bundle/'))
+  .map((f) => ({ path: f.path, size: f.size, url: '/_test/' + f.path.split('/').map(encodeURIComponent).join('/') }));
+log(`${entries.length} game files from the test server${withGame ? '' : ' (shader files only)'}`);
+const channel = new MessageChannel();
+let size = 0, got = 0, tail = new Uint8Array(0);
+channel.port2.onmessage = ({ data }) => {
+  if (data.type === 'chunk') {
+    const c = new Uint8Array(data.buffer);
+    got += c.length;
+    const last = c.subarray(Math.max(0, c.length - 98));
+    const joined = new Uint8Array(tail.length + last.length);
+    joined.set(tail);
+    joined.set(last, tail.length);
+    tail = joined.slice(-98);
+    channel.port2.postMessage({ type: 'pull' });
+  } else if (data.type === 'end') {
+    // the zip's last 98 bytes: ZIP64 end record, its locator, the end record
+    const v = new DataView(tail.buffer, tail.byteOffset);
+    const ok = got === size && v.getUint32(0, true) === 0x06064b50 && v.getUint32(76, true) === 0x06054b50;
+    log(`zip: ${got} of ${size} bytes, end records ${ok ? 'good' : 'BAD'}`, ok ? 'good' : 'bad');
+  } else if (data.type === 'error') {
+    log(`zip stream error: ${data.message}`, 'bad');
+  }
+};
+const worker = new Worker('../worker.js', { type: 'module' });
+worker.onmessage = ({ data }) => {
+  if (data.type === 'log') log(data.text);
+  else if (data.type === 'progress') bar.value = data.fraction;
+  else if (data.type === 'size') {
+    size = data.size;
+    log(`zip size ${size}`);
+    for (let i = 0; i < 4; i++) channel.port2.postMessage({ type: 'pull' });
+  } else if (data.type === 'done') { log(`done in ${data.seconds} s`, 'good'); window.testDone = true; }
+  else if (data.type === 'error') { log(`ERROR: ${data.message}`, 'bad'); window.testDone = true; }
+};
+worker.onerror = (e) => { log(`worker error: ${e.message}`, 'bad'); window.testDone = true; };
+worker.postMessage({ entries, port: channel.port1 }, [channel.port1]);
+</script>
+</body>
+</html>
