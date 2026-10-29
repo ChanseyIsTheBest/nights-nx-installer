@@ -3,11 +3,11 @@
   "builds": [
     {
       "edition": "Xbox Live Arcade (title 58411268) with its title update",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "xex_sha256": "14f684a40ac42ce6446d84de3f8b155f77d90d10a4f77ef910dc6491b361cb4d",
       "xexp_sha256": "05595b29f97607266680e32376e4f444bbafe68bdccfa02cefc30c3fae004405",
       "nro": "nights-nx.nro",
-      "nro_sha256": "2640d875f3d0ef3599db4daabae2fc64415b698becc4065cb0d44621b55e6f52",
+      "nro_sha256": "24b30fc525e2c7ec4499721e076109b02cc7ff051904e092cad39810fbca5b32",
       "files": [
         {
           "path": "pipeline_list.bin",
