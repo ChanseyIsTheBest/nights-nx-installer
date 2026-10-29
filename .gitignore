@@ -1,6 +1,8 @@
 # Test outputs are game data (shader files, zips): never commit them.
 out/
 *.zip
+# ...but Pyodide's standard library is a zip the page loads: without it Python cannot start.
+!vendor/pyodide/python_stdlib.zip
 node_modules/
 __pycache__/
 wasm/src/*/build/
