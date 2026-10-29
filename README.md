@@ -9,6 +9,8 @@ A web page that builds the Nintendo Switch package of **NiGHTS into Dreams...** 
 for [nights-nx](https://github.com/ChanseyIsTheBest/nights-nx) from the player's own copy, in the browser. Nothing is
 uploaded: the game's files never leave the computer.
 
+**Use it here: https://chanseyisthebest.github.io/nights-nx-installer/** (a Chromium browser: Chrome, Edge, ...)
+
 The release NRO carries no game data: none of the game's files and none of its shaders. The page makes the shaders
 from the player's files, as nights-nx's native build makes them:
 
@@ -41,6 +43,8 @@ from the player's files, as nights-nx's native build makes them:
 `default.xex` and `default.xexp` are recognised by their SHA-256 (`release/manifest.json`).
 
 ## Use
+
+Open https://chanseyisthebest.github.io/nights-nx-installer/ in a Chromium browser. To run it from a copy of this repository instead:
 
     python serve.py 8193 .
 
