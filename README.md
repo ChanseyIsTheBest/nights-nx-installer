@@ -31,7 +31,33 @@ from the player's files, as nights-nx's native build makes them:
 6. **nights-nx.zip**, streamed to a download by the service worker (`sw.js`): `switch/nights-nx/` with the NRO,
    `pipeline_list.bin`, the two shader files and `game_root/` (the game's files and the title update's
    `default.xexp`). `renut.toml` is not in it: the NRO writes it at its first start, so an update never overwrites
-   the player's settings.
+   the player's settings. Its size is known only at the end (the files below are packed as they stream).
+
+## Packing, H.265 and Opus (2026-11-22)
+
+The user: "help nights into dreams have l4z and zxc in its web installer and rencode video and audio to opus and
+h265", "also make sure nights ZXC compresses its videos". The pieces are culdcept-nx-installer's, rr6-nx-installer's
+and sa2-nx-ult-installer's; `game.json` says which file gets what:
+
+- **ZXC 7 in 512 KB blocks** (`"zxc"`: the stages' `cse/**/*.ddm`, `afs/*.bin`, the sound banks `afs/*.csb`,
+  `afs/*.dat`) and **LZ4 HC 9 in 256 KB blocks** (`"lz4"`: every other file but `default.xex`, `default.xexp`, the
+  movies and the music), written as `NAME.lz4b`, which nights-nx reads as `NAME` (`lib/lz4b.js`, `pack_worker.js`,
+  `wasm/lz4`, `wasm/zxc`). Measured on every file of the game (2,667 files, 1,093 MB): LZ4 330 MB, ZXC 312 MB; ZXC is
+  the smaller on all but the tiny `.csa` files.
+- **The movies to H.265** (`"movies"`, the page's first option): the 22 `afs/*.wmv` are ASF with **VC-1 advanced
+  profile** video (B pictures) and WMA Pro audio. `movie_worker.js` decodes each with FFmpeg's VC-1 decoder in
+  WebAssembly (`wasm/vc1`, built by `wasm/src/vc1/build.sh`) and takes, frame by frame, the picture the game's own
+  decoder shows: the newest picture the decoder has given, a movie's first frame drained on its own, and nothing for a
+  skipped (one-byte) frame (`lib/movies.js`; nights-nx checked this rule on the PC against the game's decoder, picture
+  for picture). Each picture is encoded by the browser's H.265 encoder (WebCodecs) at 35 % of the movie's bitrate, a
+  keyframe every 120, and written back into the same ASF file in the frame's place (`lib/asf.js`), which is then packed
+  as ZXC blocks (`NAME.wmv.lz4b`). nights-nx plays such a movie on the Switch's video hardware (nxvideo, NVDEC).
+- **The music to Opus** (`"audio"`, the page's second option): the 214 `afs/*.adx` (CRI ADX, stereo, 48 kHz) as
+  `NAME.adxo` (`lib/adx.js`, `lib/audio.js`, `audio_worker.js`: sa2-nx-ult's ADX decode and resampler, WebCodecs'
+  Opus encoder at 128 kbit/s), which nights-nx plays through its ADX decoder hook. With FFmpeg's libopus on a PC
+  (nights-nx's `tools/adx_opus_pack.mjs`): 450 MB -> 143 MB, every stream at lag 0.
+
+A browser without an H.265 or Opus encoder, or the option unticked, keeps those files as they are.
 
 ## What the player chooses
 
@@ -66,6 +92,10 @@ run made (`test/full_node.mjs`), so the page can say whether its own are identic
 | `test/full_node.mjs <game folder> <nights-nx> <out>` | the whole build as the page runs it, against nights-nx's native dump, shader table and GLSL |
 | `test/chain_node.mjs`, `test/translate_node.mjs`, `test/py_passes_node.mjs`, `test/spirv_cross_node.mjs`, `test/uam_node.mjs` | banjo-nx-installer's checks of the chain's parts |
 | `test/browser.html` (with `python serve.py 8193 . --test-files <game>`) | worker.js in a browser, the zip read back |
+| `test/pack_node.mjs <game folder> <out> [--link-rest]` | packs the game as the page does (game.json), into a folder to run nights-nx on |
+| `test/stfs_node.mjs <package> [<extracted folder>]` | `lib/stfs.js` on a package: every file of the folder found and byte for byte the same |
+| `test/pictures_node.mjs <movie.wmv> [<nights-nx log> <movie number>]` | the pictures `lib/movies.js` takes, as hashes, against those nights-nx logged (`nights_wmv_log_hashes`) |
+| `test/hevc_node.mjs <movie.wmv> <out.wmv>` | a movie's H.265 copy as the page makes it, with ffmpeg's libx265 for the encoder |
 
 Outputs of the tests (shader files, zips) are game data: never commit or share them.
 

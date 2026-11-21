@@ -5,6 +5,7 @@
 import createRenutHlslModule from './wasm/renut_hlsl.mjs';
 import createLzxModule from './wasm/lzx.mjs';
 import { compileVariants, makeGlsl, packageShaders, variantJobs } from './lib/build.js';
+import { CODECS, pack, SUFFIX } from './lib/lz4b.js';
 import { fileContainer, imageContainers, isShaderFile } from './lib/nights_dump.js';
 import { nroShaders } from './lib/nro.js';
 import { glslMaker, uamCompile, workerPool } from './lib/pool.js';
@@ -133,9 +134,46 @@ function startWorkers(script, count) {
     const w = new Worker(script, { type: 'module' });
     w.onerror = (e) => reject(new Error(`${script}: ${e.message}`));
     w.addEventListener('message', ({ data }) => {
-      if (data.ready) resolve({ w, post: (m, t) => w.postMessage(m, t), onMessage: (cb) => w.addEventListener('message', ({ data: d }) => cb(d)) });
+      if (data.ready) resolve({ w, version: data.version, zxcVersion: data.zxcVersion, hevc: data.hevc, opus: data.opus,
+                                post: (m, t) => w.postMessage(m, t),
+                                onMessage: (cb) => w.addEventListener('message', ({ data: d }) => cb(d)) });
     }, { once: true });
   })));
+}
+
+// nights-nx-installer (2026-11-22, the template's way, sa2-nx-ult-installer's worker.js): one kind of worker as
+// { run, version, stop() }.
+async function tool(script, count, wrap) {
+  const workers = await startWorkers(script, count);
+  return { run: wrap(workerPool(workers)), version: workers[0].version, zxcVersion: workers[0].zxcVersion,
+           hevc: workers[0].hevc, opus: workers[0].opus, size: workers.length,
+           stop: () => workers.forEach((x) => x.w.terminate()) };
+}
+
+// game.json's patterns: case-insensitive regular expressions on a file's path in the game folder.
+const patterns = (list) => (list || []).map((p) => new RegExp(`^(?:${p})$`, 'i'));
+const matches = (res, path) => res.some((re) => re.test(path));
+
+// culdcept-nx-installer (2026-11-20): jobs for `list`'s files started ahead of the zip, at most `window` at a time
+// (each holds its file's bytes until the zip takes its result): path -> promise of start(file).
+function jobsAhead(list, window, start) {
+  const jobs = new Map();
+  let next = 0, inFlight = 0;
+  const launch = () => {
+    while (inFlight < window && next < list.length) {
+      const f = list[next++];
+      ++inFlight;
+      jobs.set(f.path, start(f).finally(() => { --inFlight; launch(); }));
+    }
+  };
+  launch();
+  return jobs;
+}
+
+// game.json "audio" "bitrates": [{ match, stereo, mono }], the first rule matching the path (bit/s).
+function audioBitrates(rules, path) {
+  for (const r of rules) if (new RegExp(`^(?:${r.match})$`, 'i').test(path)) return { stereo: r.stereo, mono: r.mono };
+  return { stereo: 128000, mono: 48000 };
 }
 
 self.onmessage = async ({ data }) => {
@@ -144,6 +182,7 @@ self.onmessage = async ({ data }) => {
   const seconds = () => Math.round((performance.now() - started) / 1000);
   let workers = [];
   const stopWorkers = () => { for (const x of workers) x.w.terminate(); workers = []; };
+  let stopPools = () => {};  // the packing, movie and audio workers (set once they start)
   try {
     const manifest = JSON.parse(new TextDecoder().decode(await fetchBytes('./release/manifest.json')));
     const files = await gameFiles(data.input);
@@ -218,29 +257,136 @@ self.onmessage = async ({ data }) => {
           `${glslHash.slice(0, 12)} / ${cacheHash.slice(0, 12)})`) : ''));
 
     // the zip: the program, its files, the shaders, and the game's files (renut.toml is not in it: the program writes
-    // it at its first start, so an update never overwrites your settings)
-    const entries = [
-      { path: `${ROOT}/nights-nx.nro`, size: nro.length },
-      ...extras.map((f) => ({ path: `${ROOT}/${f.path}`, size: f.bytes.length })),
-      { path: `${ROOT}/deko3d_glsl.bin`, size: glslPackage.length },
-      { path: `${ROOT}/deko3d_shaders.bin`, size: cache.length },
-      ...files.map((f) => ({ path: `${ROOT}/game_root/${f.path}`, size: f.size })),
-    ];
-    const total = zipSize(entries);
-    postMessage({ type: 'size', size: total });
+    // it at its first start, so an update never overwrites your settings).
+    //
+    // nights-nx-installer (2026-11-22, the user: "help nights into dreams have l4z and zxc in its web installer and
+    // rencode video and audio to opus and h265", "also make sure nights ZXC compresses its videos"; the template's
+    // lib/install.js as culdcept-nx-installer and sa2-nx-ult-installer have it), by game.json:
+    //   - "zxc" (ZXC 7, 512 KB blocks: the stages' .ddm, the .bin archives, the sound banks, the .dat files) and "lz4"
+    //     (LZ4 HC 9, 256 KB blocks: the rest but default.xex(p), the movies and the music) as NAME.lz4b, which nights-nx
+    //     reads as NAME (rr6-nx's reader, sdk/include/rex/filesystem/lz4_blocks.h). On NiGHTS's files ZXC is smaller
+    //     for all but the tiny .csa ones (1,093 MB: LZ4 330, ZXC 312 MB);
+    //   - "movies" (afs/*.wmv, VC-1) re-encoded to H.265 (movie_worker.js, lib/movies.js) and packed as ZXC blocks
+    //     (NAME.wmv.lz4b); a movie the browser cannot re-encode goes in as it is (and is packed as LZ4 by nothing: it
+    //     stays NAME.wmv);
+    //   - "audio" (afs/*.adx) re-encoded to Opus (audio_worker.js, lib/audio.js) as NAME.adxo, which nights-nx plays
+    //     through its ADX decoder hook (app/src/nights_adx_opus.cpp); not packed (Opus does not compress).
+    // The zip's size is known only at the end.
+    const gameJson = JSON.parse(new TextDecoder().decode(await fetchBytes('./game.json')));
+    const lz4 = patterns(gameJson.lz4), zxc = patterns(gameJson.zxc), skip = patterns(gameJson.skip);
+    const codecOf = (path) => (matches(zxc, path) ? 'zxc' : matches(lz4, path) ? 'lz4' : null);
+    const gameList = files.filter((f) => !matches(skip, f.path));
+    const running = [];
+    const stopTools = () => { for (const r of running.splice(0)) r.stop(); };
+    stopPools = stopTools;
+    const packPool = await tool('./pack_worker.js', cores, (pool) => (bytes, codec) =>
+      pool.run({ bytes, codec, level: CODECS[codec].level, block: CODECS[codec].block }, [bytes.buffer]).then((r) => r.bytes));
+    running.push(packPool);
+    {
+      const version = (v) => `${Math.floor(v / 10000)}.${Math.floor(v / 100) % 100}.${v % 100}`;
+      const n = (codec) => gameList.filter((f) => codecOf(f.path) === codec).length;
+      log(`LZ4 ${version(packPool.version)} for ${n('lz4')} files and ZXC ${version(packPool.zxcVersion)} for ${n('zxc')} ` +
+          `on ${cores} threads.`);
+    }
+    let movieJobs = new Map();
+    if (data.movies !== false && gameJson.movies) {
+      const list = gameList.filter((f) => matches(patterns([gameJson.movies.match]), f.path));
+      if (list.length) {
+        const moviePool = await tool('./movie_worker.js', Math.max(1, Math.min(4, cores >> 1)), (pool) => (bytes, opts) =>
+          pool.run({ bytes, ...opts }, [bytes.buffer]));
+        running.push(moviePool);
+        if (!moviePool.hevc) {
+          log('This browser cannot encode H.265 (WebCodecs with the computer\'s video hardware): the movies stay as they are.');
+        } else {
+          log(`Re-encoding ${list.length} movies to H.265 (${Math.round((gameJson.movies.fraction || 0.35) * 100)} % of ` +
+              `their bitrate) on ${moviePool.size} workers, with this computer's video encoder.`);
+          movieJobs = jobsAhead(list, moviePool.size * 2, (f) => f.read(0, f.size).then((bytes) =>
+            moviePool.run(bytes, { fraction: gameJson.movies.fraction, gop: gameJson.movies.gop })));
+        }
+      }
+    }
+    let audioJobs = new Map();
+    if (data.audio !== false && gameJson.audio) {
+      const list = gameList.filter((f) => matches(patterns([gameJson.audio.match]), f.path));
+      if (list.length) {
+        const audioPool = await tool('./audio_worker.js', Math.max(1, Math.min(8, cores)), (pool) => (bytes, opts) =>
+          pool.run({ bytes, ...opts }, [bytes.buffer]));
+        running.push(audioPool);
+        if (!audioPool.opus) {
+          log('This browser cannot encode Opus (WebCodecs): the music stays ADX.');
+        } else {
+          const rules = gameJson.audio.bitrates || [{ match: '.*', stereo: 128000, mono: 48000 }];
+          log(`Re-encoding ${list.length} music files to Opus on ${audioPool.size} workers.`);
+          audioJobs = jobsAhead(list, audioPool.size * 2, (f) => f.read(0, f.size).then((bytes) =>
+            audioPool.run(bytes, { bitrates: audioBitrates(rules, f.path) })));
+        }
+      }
+    }
+
+    const totalIn = nro.length + extras.reduce((n, f) => n + f.bytes.length, 0) + glslPackage.length + cache.length +
+                    gameList.reduce((n, f) => n + f.size, 0);
+    postMessage({ type: 'size', size: null });
     const zip = new ZipWriter(sink);
     let written = 0;
-    const counted = (n) => { written += n; progress('zip')(written / total); };
-    await zip.addBytes(entries[0].path, nro); counted(nro.length);
+    const counted = (n) => { written += n; progress('zip')(written / totalIn); };
+    await zip.addBytes(`${ROOT}/nights-nx.nro`, nro); counted(nro.length);
     for (const f of extras) { await zip.addBytes(`${ROOT}/${f.path}`, f.bytes); counted(f.bytes.length); }
     await zip.addBytes(`${ROOT}/deko3d_glsl.bin`, glslPackage); counted(glslPackage.length);
     await zip.addBytes(`${ROOT}/deko3d_shaders.bin`, cache); counted(cache.length);
-    for (const f of files) {
-      await zip.addFile(`${ROOT}/game_root/${f.path}`, f.size, chunks(f), (c) => counted(c.length));
+    const stats = { packedIn: 0, packedOut: 0, moviesIn: 0, moviesOut: 0, audioIn: 0, audioOut: 0, audioKept: 0 };
+    const mb = (n) => (n / 1048576).toFixed(1);
+    for (const f of gameList) {
+      const at = `${ROOT}/game_root/${f.path}`;
+      if (movieJobs.has(f.path)) {
+        const r = await movieJobs.get(f.path);
+        movieJobs.delete(f.path);
+        if (r.bytes) {
+          const asFile = { size: r.bytes.length, read: async (o, n) => r.bytes.subarray(o, o + n) };
+          const size = await zip.addStream(`${at}${SUFFIX}`, pack(asFile, packPool.run, { codec: 'zxc', inFlight: cores * 4 }));
+          counted(f.size);
+          stats.moviesIn += f.size;
+          stats.moviesOut += size;
+          log(`  ${f.path}: H.265, ${mb(f.size)} MB -> ${mb(size)} MB (${r.kbps} kbit/s, ${r.pictures} pictures)`);
+        } else {
+          log(`  ${f.path}: kept as it is (${r.why})`);
+          await zip.addFile(at, f.size, chunks(f), (c) => counted(c.length));
+        }
+      } else if (audioJobs.has(f.path)) {
+        const r = await audioJobs.get(f.path);
+        audioJobs.delete(f.path);
+        if (r.bytes) {
+          await zip.addBytes(`${at}.adxo`, r.bytes);
+          counted(f.size);
+          stats.audioIn += f.size;
+          stats.audioOut += r.bytes.length;
+        } else {
+          ++stats.audioKept;
+          if (stats.audioKept <= 5) log(`  ${f.path}: kept as ADX (${r.why})`);
+          await zip.addFile(at, f.size, chunks(f), (c) => counted(c.length));
+        }
+      } else if (codecOf(f.path)) {
+        const codec = codecOf(f.path);
+        const size = await zip.addStream(`${at}${SUFFIX}`,
+                                         pack(f, packPool.run, { codec, inFlight: cores * 4, onRaw: counted }));
+        stats.packedIn += f.size;
+        stats.packedOut += size;
+      } else {
+        await zip.addFile(at, f.size, chunks(f), (c) => counted(c.length));
+      }
     }
-    await zip.finish();
-    postMessage({ type: 'done', seconds: seconds() });
+    const zipBytes = await zip.finish();
+    stopTools();
+    if (stats.packedIn) {
+      log(`Packed ${mb(stats.packedIn)} MB of game files to ${mb(stats.packedOut)} MB (LZ4 and ZXC).`);
+    }
+    if (stats.moviesIn) log(`Movies: ${mb(stats.moviesIn)} MB of VC-1 as ${mb(stats.moviesOut)} MB of H.265 (ZXC-packed).`);
+    if (stats.audioIn) {
+      log(`Music: ${mb(stats.audioIn)} MB of ADX as ${mb(stats.audioOut)} MB of Opus` +
+          (stats.audioKept ? `; ${stats.audioKept} files kept as ADX.` : '.'));
+    }
+    postMessage({ type: 'done', seconds: seconds(), size: zipBytes });
   } catch (error) {
+    stopPools();
     stopWorkers();
     const message = error.message || String(error);
     sink.fail(message);

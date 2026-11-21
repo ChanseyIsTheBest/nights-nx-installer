@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Movie Re-encode Test</title>
+<style>
+  :root { color-scheme: light dark; --bg: #fff; --text: #111; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #111; --text: #eee; } }
+  :root[data-theme="dark"] { --bg: #111; --text: #eee; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, sans-serif; margin: 16px; }
+  pre { white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<!-- culdcept-nx-installer (2026-11-20; nights-nx-installer 2026-11-22: VC-1): one movie re-encoded to H.265 in this browser (movie_worker.js: the VC-1 decoder in
+     WebAssembly, WebCodecs, the ASF remux), written to serve.py's --test-out file. Serve with
+       python serve.py 8193 . --test-files <game folder> --test-out <movie.wmv>
+     and open http://127.0.0.1:8193/test/movie_browser.html?movie=afs/SEGA_HD.wmv -->
+<h1>Movie re-encode test</h1>
+<pre id="log"></pre>
+<script type="module">
+const out = document.getElementById('log');
+const log = (t) => { out.textContent += t + '\n'; };
+const movie = new URLSearchParams(location.search).get('movie') || 'afs/SEGA_HD.wmv';
+const game = await (await fetch('../game.json')).json();
+const bytes = new Uint8Array(await (await fetch(`/_test/${movie.split('/').map(encodeURIComponent).join('/')}`)).arrayBuffer());
+log(`${movie}: ${(bytes.length / 1048576).toFixed(1)} MB`);
+const w = new Worker('../movie_worker.js', { type: 'module' });
+const ready = await new Promise((r) => w.addEventListener('message', ({ data }) => r(data), { once: true }));
+log(`movie worker ready: libavcodec ${ready.version >> 16}.${(ready.version >> 8) & 255}.${ready.version & 255}, ` +
+    `H.265 encoder ${ready.hevc ? 'available' : 'NOT available'}`);
+const t0 = performance.now();
+w.postMessage({ id: 1, bytes, fraction: game.movies.fraction, gop: game.movies.gop }, [bytes.buffer]);
+const r = await new Promise((res) => w.addEventListener('message', ({ data }) => res(data), { once: true }));
+const s = ((performance.now() - t0) / 1000).toFixed(1);
+if (!r.bytes) {
+  log(`kept as WMV: ${r.why} (${s} s)`);
+} else {
+  log(`H.265: ${(r.bytes.length / 1048576).toFixed(2)} MB, ${r.frames} frames (${r.pictures} pictures), ${r.kbps} kbit/s, ${s} s`);
+  const put = await fetch('/_test_write?offset=0', { method: 'POST', body: r.bytes });
+  log(`written to the test output: ${put.status}`);
+}
+log('DONE');
+</script>
+</body>
+</html>

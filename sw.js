@@ -48,11 +48,9 @@ function serveDownload(job) {
     },
     { highWaterMark: 4 },
   );
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'application/zip',
-      'Content-Disposition': `attachment; filename="${job.filename}"`,
-      'Content-Length': String(job.size),
-    },
-  });
+  // nights-nx-installer (2026-11-22, rr6-nx-installer's): no Content-Length when the size is known only at the end (the
+  // game's files packed and re-encoded as they stream)
+  const headers = { 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="${job.filename}"` };
+  if (Number.isFinite(job.size)) headers['Content-Length'] = String(job.size);
+  return new Response(stream, { headers });
 }

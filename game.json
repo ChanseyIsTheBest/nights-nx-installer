@@ -1,0 +1,29 @@
+{
+  "title": "NiGHTS into Dreams...",
+  "package": "nights-nx",
+  "lz4": [
+    "(?!default\\.xexp?$|afs/.*\\.wmv$|afs/.*\\.adx$).*"
+  ],
+  "zxc": [
+    "cse/.*\\.ddm",
+    "afs/.*\\.bin",
+    "afs/.*\\.csb",
+    "afs/.*\\.dat"
+  ],
+  "movies": {
+    "match": "afs/.*\\.wmv",
+    "fraction": 0.35,
+    "gop": 120
+  },
+  "audio": {
+    "match": "afs/.*\\.adx",
+    "bitrates": [
+      {
+        "match": ".*",
+        "stereo": 128000,
+        "mono": 48000
+      }
+    ]
+  },
+  "skip": []
+}

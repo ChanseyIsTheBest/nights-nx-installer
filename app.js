@@ -156,10 +156,12 @@ create.addEventListener('click', async () => {
       downloadFrame.hidden = true;
       downloadFrame.src = `./download/${id}/nights-nx.zip`;
       document.body.appendChild(downloadFrame);
-      log(`Download started: nights-nx.zip, ${formatSize(data.size)}. Keep this page open until it finishes.`);
+      log(Number.isFinite(data.size)
+        ? `Download started: nights-nx.zip, ${formatSize(data.size)}. Keep this page open until it finishes.`
+        : 'Download started: nights-nx.zip (its size is known when it is finished). Keep this page open until it finishes.');
     } else if (data.type === 'done') {
       bar.value = 1;
-      log(`Finished in ${data.seconds} s.`);
+      log(`Finished in ${data.seconds} s${Number.isFinite(data.size) ? `: ${formatSize(data.size)}` : ''}.`);
       finish();
     } else if (data.type === 'error') {
       log(`Error: ${data.message}`, true);
@@ -170,5 +172,8 @@ create.addEventListener('click', async () => {
     log(`Error: ${event.message}`, true);
     finish();
   };
-  worker.postMessage({ input, port: channel.port1 }, [channel.port1]);
+  // nights-nx-installer (2026-11-22): the page's options (index.html): the movies to H.265, the music to Opus
+  const movies = document.getElementById('movies')?.checked !== false;
+  const audio = document.getElementById('audio')?.checked !== false;
+  worker.postMessage({ input, port: channel.port1, movies, audio }, [channel.port1]);
 });

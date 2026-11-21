@@ -43,6 +43,9 @@
     ol { margin: 0; padding-left: 20px; }
     code { background: rgba(0, 0, 0, .45); border: 1px solid var(--line); padding: 1px 5px; border-radius: 4px; }
     .note { color: var(--muted); font-size: .92rem; margin: 10px 0 0; }
+    .option { display: inline-block; margin: 0 0 8px; cursor: pointer; }
+    .option input { accent-color: var(--accent); margin-right: 6px; }
+    .option + .note { margin: 0 0 12px; }
     footer { text-align: center; color: var(--muted); font-size: .85rem; }
   </style>
 </head>
@@ -72,9 +75,16 @@
 
   <section>
     <h2>2. Create the package</h2>
+    <label class="option"><input id="movies" type="checkbox" checked> Re-encode the movies to H.265 (the Switch's video
+      hardware plays them; about a third of their size)</label><br>
+    <label class="option"><input id="audio" type="checkbox" checked> Re-encode the music to Opus (about a third of its
+      size)</label>
+    <p class="note">The game's other files are packed with ZXC and LZ4, which the Switch reads as they are. A browser
+      without an H.265 or Opus encoder (WebCodecs) keeps those files as they are.</p>
     <button id="create" class="primary" disabled>Create nights-nx.zip</button>
     <p class="note">The page makes the game's shaders from your files and compiles them for the Switch, which takes a few
-      minutes and a few GB of memory. The zip then downloads while it is written (about 2 GB).</p>
+      minutes and a few GB of memory. The zip then downloads while it is written (about 1 GB, or 2 GB with the
+      options off).</p>
     <progress id="bar" max="1" value="0" hidden></progress>
     <div id="log" role="log" aria-live="polite"></div>
   </section>

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Music Re-encode Test</title>
+<style>
+  :root { color-scheme: light dark; --bg: #fff; --text: #111; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #111; --text: #eee; } }
+  :root[data-theme="dark"] { --bg: #111; --text: #eee; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, sans-serif; margin: 16px; }
+  pre { white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<!-- nights-nx-installer (2026-11-22, culdcept-nx-installer's test page of 2026-11-20): music files re-encoded to Opus in
+     this browser (audio_worker.js: the ADX decode and resampler in JavaScript, WebCodecs' Opus encoder, the .adxo
+     written), each as the installer does it; the first one's .adxo written to serve.py's --test-out file (check it with
+     nights-nx's `node tools/adx_opus_pack.mjs --check NAME.adx NAME.adx.adxo`). Serve with
+       python serve.py 8193 . --test-files <game folder> --test-out <NAME.adx.adxo>
+     and open http://127.0.0.1:8193/test/audio_browser.html?files=afs/dreams.adx,afs/alp_1a.adx -->
+<h1>Music re-encode test</h1>
+<pre id="log"></pre>
+<script type="module">
+const out = document.getElementById('log');
+const log = (t) => { out.textContent += t + '\n'; };
+const files = (new URLSearchParams(location.search).get('files') || 'afs/dreams.adx').split(',');
+const game = await (await fetch('../game.json')).json();
+const rule = (path) => (game.audio.bitrates || []).find((r) => new RegExp(`^(?:${r.match})$`, 'i').test(path))
+  || { stereo: 128000, mono: 48000 };
+const w = new Worker('../audio_worker.js', { type: 'module' });
+const ready = await new Promise((r) => w.addEventListener('message', ({ data }) => r(data), { once: true }));
+log(`audio worker ready: Opus encoder ${ready.opus ? 'available' : 'NOT available'}`);
+let id = 0, wrote = false;
+for (const path of files) {
+  const bytes = new Uint8Array(await (await fetch(`/_test/${path.split('/').map(encodeURIComponent).join('/')}`)).arrayBuffer());
+  const size = bytes.length;
+  const t0 = performance.now();
+  const { stereo, mono } = rule(path);
+  w.postMessage({ id: ++id, bytes, bitrates: { stereo, mono } }, [bytes.buffer]);
+  const r = await new Promise((res) => w.addEventListener('message', ({ data }) => res(data), { once: true }));
+  const s = ((performance.now() - t0) / 1000).toFixed(1);
+  if (!r.bytes) {
+    log(`${path}: kept as ADX: ${r.why} (${s} s)`);
+    continue;
+  }
+  log(`${path}: ${(size / 1048576).toFixed(2)} MB -> ${(r.bytes.length / 1048576).toFixed(2)} MB of .adxo, ` +
+      `${r.streams} stream(s), ${s} s`);
+  if (!wrote) {
+    const put = await fetch('/_test_write?offset=0', { method: 'POST', body: r.bytes });
+    log(`written to the test output: ${put.status}`);
+    wrote = true;
+  }
+}
+log('DONE');
+</script>
+</body>
+</html>
