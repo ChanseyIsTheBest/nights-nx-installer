@@ -90,6 +90,9 @@ int main(int argc, char** argv) try {
     const uint64_t hash = XXH3_64bits(container, extent);
 
     ShaderRecompiler recompiler;
+    // nights-nx 1.1 (the ultimate base's XenosRecomp main.cpp, RENUT_RECOMP): every vertex shader writes the user clip
+    // plane's distance (SV_ClipDistance0); the draw gives a zero plane when it has none.
+    recompiler.userClipPlane = true;
     try {
       recompiler.recompile(data.data(), include);
     } catch (const std::exception& error) {

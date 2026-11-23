@@ -79,11 +79,20 @@ workers).
 
 ## Release files
 
-`release/` is filled by `tools/make_release.py` from a nights-nx **distribution build**: its own shader table empty
-(nights-nx: `tools/renut_switch_shader_cache.py --pc app/out/pc-nx --only <an empty folder> --out-dir
-app/out/renut_switch_dist`) and no GLSL package (`BANJO_DEKO3D_GLSL_CPP` pointing at no file), so it reads every
-shader from `deko3d_glsl.bin`. With `--reference`, the manifest also holds the SHA-256 of the two shader files a Node
-run made (`test/full_node.mjs`), so the page can say whether its own are identical.
+`release/` is filled by `tools/make_release.py` from a nights-nx **distribution build**. Since nights-nx 1.1.0 (the
+ultimate base) that is `tools/build_switch_release.bat` after `tools/renut_release_shaders.py`: the NRO's shader table
+holds only numbers (the shaders' hashes, fetch masks and vertex formats, no SPIR-V) and it has no GLSL package, so it
+reads every shader from `deko3d_glsl.bin`. (1.0.x's distribution build had an empty table.) With `--reference`, the
+manifest also holds the SHA-256 of the two shader files a Node run made (`test/full_node.mjs`), so the page can say
+whether its own are identical.
+
+The shader chain follows the nights-nx tree it is built for: `wasm/renut_hlsl.wasm` from its
+`app/thirdparty/reblue-XenosRecomp` (`BANJO_NX=<nights-nx> wasm/src/translator/build_wasm_translator.sh`), `py/` from its
+`tools/` (deko3d_glsl.py, deko3d_glsl_opt.py and the lists it reads), `release/shader_common.h` from the translator, and
+`release/variants.txt` from `tools/deko3d_variant_cache.py --list <a console's pipeline_list.bin> --export-variants`.
+1.1.0's: 99 shaders, every one with the native build's interface (constants, inputs and outputs, blocks) and the
+native shader table's numbers; 31 of the GLSL texts byte for byte the native ones, the rest differing only by DXC's
+version.
 
 ## Tests (Node 24, from this folder)
 

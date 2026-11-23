@@ -5,9 +5,10 @@
         --xexp <the title update's default.xexp> [--pipelines <pipeline_list.bin>] [--reference <folder of
         test/full_node.mjs's output>] [--version 0.1.0]
 
-The NRO must be a distribution build (nights-nx: an empty shader table and GLSL package, tools/renut_switch_shader_cache.py
---only and tools/deko3d_shader_package.py --only --raw on an empty folder: NiGHTS makes no shader at runtime): it carries
-none of the game's shaders. release/ then holds the NRO, its pipeline list, the translator's shader_common.h, and
+The NRO must be a distribution build: it carries none of the game's shaders. nights-nx 1.1.0 and later (the ultimate
+base): tools/build_switch_release.bat after tools/renut_release_shaders.py (a shader table of numbers only, no GLSL
+package). 1.0.x: an empty shader table and GLSL package (tools/renut_switch_shader_cache.py --only and
+tools/deko3d_shader_package.py --only --raw on an empty folder). release/ then holds the NRO, its pipeline list, the translator's shader_common.h, and
 manifest.json naming each file's SHA-256 and the supported default.xex and default.xexp (their SHA-256 only). With
 --reference, the SHA-256 of the deko3d_glsl.bin and deko3d_shaders.bin a run of the whole build made (they are the same
 bytes in every browser): the page then says whether its own are identical. release/variants.txt is written by

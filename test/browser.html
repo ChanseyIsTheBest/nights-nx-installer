@@ -29,26 +29,57 @@ const log = (text, cls = '') => {
 window.testDone = false;
 const withGame = new URLSearchParams(location.search).get('game') !== '0';
 const list = await (await fetch('/_test_list')).json();
-const entries = list.filter((f) => withGame || f.path === 'default.xex' || f.path.startsWith('Bundle/'))
+// nights-nx-installer (2026-11-23): NiGHTS's shader files are default.xex and shader/ (banjo-nx's were in Bundle/).
+const entries = list.filter((f) => withGame || /^default\.xexp?$/.test(f.path) || f.path.startsWith('shader/'))
   .map((f) => ({ path: f.path, size: f.size, url: '/_test/' + f.path.split('/').map(encodeURIComponent).join('/') }));
 log(`${entries.length} game files from the test server${withGame ? '' : ' (shader files only)'}`);
+// nights-nx-installer (2026-11-23): the worker takes the page's own input, { folder: [{ path, size, file }] } with a Blob
+// for each file (app.js; banjo-nx's harness sent URL entries, which this worker never read). Each file is fetched into a
+// Blob here first (Chromium keeps large blobs on disk).
+const folder = [];
+for (let i = 0; i < entries.length; i += 16) {
+  await Promise.all(entries.slice(i, i + 16).map(async (e) => {
+    const r = await fetch(e.url);
+    if (!r.ok) throw new Error(`${e.path}: HTTP ${r.status}`);
+    folder.push({ path: e.path, size: e.size, file: await r.blob() });
+  }));
+}
+log(`${folder.length} files read into blobs`);
 const channel = new MessageChannel();
 let size = 0, got = 0, tail = new Uint8Array(0);
+// nights-nx-installer (2026-11-23): ?save=1 writes the zip to the test server's --test-out file as it streams
+// (serve.py's POST /_test_write, rr6-nx-installer's), one chunk at a time in order, for checking its files.
+const save = new URLSearchParams(location.search).get('save') === '1';
+let writing = Promise.resolve();
 channel.port2.onmessage = ({ data }) => {
   if (data.type === 'chunk') {
     const c = new Uint8Array(data.buffer);
+    const at = got;
     got += c.length;
     const last = c.subarray(Math.max(0, c.length - 98));
     const joined = new Uint8Array(tail.length + last.length);
     joined.set(tail);
     joined.set(last, tail.length);
     tail = joined.slice(-98);
-    channel.port2.postMessage({ type: 'pull' });
+    if (save) {
+      writing = writing.then(async () => {
+        const r = await fetch(`/_test_write?offset=${at}`, { method: 'POST', body: c });
+        if (!r.ok) log(`zip save: HTTP ${r.status} at ${at}`, 'bad');
+      });
+      writing.then(() => channel.port2.postMessage({ type: 'pull' }));
+    } else {
+      channel.port2.postMessage({ type: 'pull' });
+    }
   } else if (data.type === 'end') {
     // the zip's last 98 bytes: ZIP64 end record, its locator, the end record
     const v = new DataView(tail.buffer, tail.byteOffset);
-    const ok = got === size && v.getUint32(0, true) === 0x06064b50 && v.getUint32(76, true) === 0x06054b50;
-    log(`zip: ${got} of ${size} bytes, end records ${ok ? 'good' : 'BAD'}`, ok ? 'good' : 'bad');
+    // nights-nx-installer (2026-11-23): the worker announces no size when it re-encodes the movies and music as it goes
+    // (size null): then only the end records are checked.
+    const ok = (size == null || got === size) && v.getUint32(0, true) === 0x06064b50 &&
+               v.getUint32(76, true) === 0x06054b50;
+    log(`zip: ${got} of ${size == null ? 'an unannounced size of' : size} bytes, end records ${ok ? 'good' : 'BAD'}`,
+        ok ? 'good' : 'bad');
+    if (save) writing.then(() => { log('zip saved to the test server', 'good'); window.zipSaved = true; });
   } else if (data.type === 'error') {
     log(`zip stream error: ${data.message}`, 'bad');
   }
@@ -65,7 +96,7 @@ worker.onmessage = ({ data }) => {
   else if (data.type === 'error') { log(`ERROR: ${data.message}`, 'bad'); window.testDone = true; }
 };
 worker.onerror = (e) => { log(`worker error: ${e.message}`, 'bad'); window.testDone = true; };
-worker.postMessage({ entries, port: channel.port1 }, [channel.port1]);
+worker.postMessage({ input: { folder }, port: channel.port1, movies: true, audio: true }, [channel.port1]);
 </script>
 </body>
 </html>

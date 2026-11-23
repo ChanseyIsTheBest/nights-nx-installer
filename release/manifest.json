@@ -3,20 +3,20 @@
   "builds": [
     {
       "edition": "Xbox Live Arcade (title 58411268) with its title update",
-      "version": "1.0.2",
+      "version": "1.1.0",
       "xex_sha256": "14f684a40ac42ce6446d84de3f8b155f77d90d10a4f77ef910dc6491b361cb4d",
       "xexp_sha256": "05595b29f97607266680e32376e4f444bbafe68bdccfa02cefc30c3fae004405",
       "nro": "nights-nx.nro",
-      "nro_sha256": "c448b13869d7a395bffb823db6205bea7e53369f43dadf9784432f87f262e8c6",
+      "nro_sha256": "1de788e86d4a5bc229ec7898838b4e34cac97af507df6b8c66c64efdab53a757",
       "files": [
         {
           "path": "pipeline_list.bin",
           "source": "pipeline_list.bin",
-          "sha256": "a05e5d973a21528c5b6ae12ba74baad79560cb5bdc05d50a8eb9f1bfd3514800"
+          "sha256": "f6b23739f737b6097b526c62b72488d9a81520b789ba8564e8c2b70748720233"
         }
       ],
-      "deko3d_glsl_sha256": "d3a9c68db652e755143a6c448e8e1cec5cb9efe4c4fe81e9786b383395e0c2cb",
-      "deko3d_shaders_sha256": "948449914bef4dd8e92ba72e906289fe424d3530f6a97256aebe34e6f7c489a4"
+      "deko3d_glsl_sha256": "eb1153466ee88aa0d31a2099e41d767fecf13b9496e70f5b2c1a7c92d8c09c7a",
+      "deko3d_shaders_sha256": "34786d28d753c84e4a0e7b304586675e5a7b1ffa037bb36344f0e762159e8dc0"
     }
   ]
 }
