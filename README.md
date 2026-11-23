@@ -79,7 +79,7 @@ workers).
 
 ## Release files
 
-`release/` is filled by `tools/make_release.py` from a nights-nx **distribution build**. Since nights-nx 1.1.0 (the
+`release/` is filled by `tools/make_release.py` from a nights-nx **distribution build**. Since nights-nx 1.0.3 (the
 ultimate base) that is `tools/build_switch_release.bat` after `tools/renut_release_shaders.py`: the NRO's shader table
 holds only numbers (the shaders' hashes, fetch masks and vertex formats, no SPIR-V) and it has no GLSL package, so it
 reads every shader from `deko3d_glsl.bin`. (1.0.x's distribution build had an empty table.) With `--reference`, the
@@ -90,7 +90,7 @@ The shader chain follows the nights-nx tree it is built for: `wasm/renut_hlsl.wa
 `app/thirdparty/reblue-XenosRecomp` (`BANJO_NX=<nights-nx> wasm/src/translator/build_wasm_translator.sh`), `py/` from its
 `tools/` (deko3d_glsl.py, deko3d_glsl_opt.py and the lists it reads), `release/shader_common.h` from the translator, and
 `release/variants.txt` from `tools/deko3d_variant_cache.py --list <a console's pipeline_list.bin> --export-variants`.
-1.1.0's: 99 shaders, every one with the native build's interface (constants, inputs and outputs, blocks) and the
+1.0.3's: 99 shaders, every one with the native build's interface (constants, inputs and outputs, blocks) and the
 native shader table's numbers; 31 of the GLSL texts byte for byte the native ones, the rest differing only by DXC's
 version.
 
